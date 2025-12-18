@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Magical 3D Gesture Christmas Tree</title>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" rel="stylesheet">
@@ -21,6 +21,7 @@
             background: radial-gradient(circle at center, #001f3f 0%, #000428 100%);
             color: white;
             font-family: 'Great Vibes', cursive;
+            touch-action: none; /* 防止手機縮放干擾 */
         }
 
         #ui-overlay {
@@ -39,16 +40,20 @@
         }
 
         .neon-text {
-            font-size: 5.5rem;
+            font-size: 4rem; /* 手機上縮小一點字體 */
             color: #ffd700;
             text-shadow: 
                 0 0 10px #ffd700,
                 0 0 20px #ffd700,
-                0 0 40px #ffae00,
-                0 0 80px #ffae00;
+                0 0 40px #ffae00;
             opacity: 0;
             transform: translateY(-20px);
             transition: all 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+            text-align: center;
+        }
+
+        @media (min-width: 768px) {
+            .neon-text { font-size: 5.5rem; }
         }
 
         .neon-text.visible {
@@ -60,15 +65,14 @@
             position: absolute;
             bottom: 20px;
             right: 20px;
-            width: 180px;
-            height: 135px;
+            width: 120px;
+            height: 90px;
             border: 2px solid rgba(255, 215, 0, 0.5);
             border-radius: 12px;
             overflow: hidden;
             transform: scaleX(-1);
             z-index: 20;
             background: rgba(0,0,0,0.5);
-            box-shadow: 0 0 15px rgba(255, 215, 0, 0.2);
         }
 
         #input-video {
@@ -80,18 +84,19 @@
         .instructions {
             font-family: sans-serif;
             background: rgba(0, 0, 0, 0.7);
-            padding: 12px 24px;
-            border-radius: 30px;
-            font-size: 1rem;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.9rem;
             color: #fff;
             pointer-events: auto;
             border: 1px solid rgba(255, 215, 0, 0.3);
             text-align: center;
+            max-width: 90%;
         }
 
         #status-indicator {
             position: absolute;
-            bottom: 30px;
+            bottom: 120px; /* 避開影片視窗 */
             left: 50%;
             transform: translateX(-50%);
             font-family: sans-serif;
@@ -100,7 +105,7 @@
             background: rgba(255, 215, 0, 0.1);
             color: #ffd700;
             font-weight: bold;
-            letter-spacing: 1px;
+            font-size: 0.8rem;
         }
 
         .loading-screen {
@@ -126,11 +131,8 @@
             border: none;
             font-family: 'Great Vibes', cursive;
             box-shadow: 0 0 20px #ffd700;
-            transition: transform 0.2s;
-            display: none; /* 初期隱藏 */
+            display: none;
         }
-
-        #start-button:hover { transform: scale(1.1); }
 
         .loader {
             width: 48px;
@@ -139,7 +141,6 @@
             border-bottom-color: #ffd700;
             border-radius: 50%;
             display: inline-block;
-            box-sizing: border-box;
             animation: rotation 1s linear infinite;
         }
 
@@ -153,7 +154,7 @@
 
     <div id="loading" class="loading-screen">
         <span id="spinner" class="loader"></span>
-        <div id="loading-text" style="font-family: sans-serif; margin-top: 20px;">正在加載聖誕魔法...</div>
+        <div id="loading-text" style="font-family: sans-serif; margin-top: 20px; color: #ffd700;">載入魔法模型中...</div>
         <button id="start-button">開啟聖誕魔法</button>
     </div>
 
@@ -162,31 +163,26 @@
         <div class="instructions">
             <p>✋ <b>張開手掌</b>：粒子消散</p>
             <p>✊ <b>握緊拳頭</b>：聚合成聖誕樹</p>
-            <p class="text-xs mt-2 text-yellow-200/60">( 若無攝像頭，請<b>點擊並長按螢幕</b>模擬 )</p>
+            <p class="text-xs mt-1 text-yellow-200/60">( 若無反應，請<b>長按螢幕</b> )</p>
         </div>
     </div>
 
-    <div id="status-indicator">等待手勢識別...</div>
+    <div id="status-indicator">等待權限...</div>
 
     <div id="video-container">
-        <video id="input-video"></video>
+        <!-- 關鍵：加入 playsinline, autoplay, muted 以適應手機端 -->
+        <video id="input-video" playsinline autoplay muted></video>
     </div>
 
     <script>
-        /**
-         * GLOBAL CONFIG & STATE
-         */
         let scene, camera, renderer, particles;
-        let particleCount = 8000;
+        let particleCount = 6000; // 手機端稍微減少粒子數量以保證效能
         let isFist = false;
-        let lerpSpeed = 0.06;
+        let lerpSpeed = 0.07;
         let audioCtx, bgmInterval;
-        
-        const COLORS = [0xFFD700, 0x50C878, 0xFFF8E1, 0xFFD700, 0x00FF7F]; 
+        const COLORS = [0xFFD700, 0x50C878, 0xFFF8E1, 0xFFD700, 0x00FF7F];
 
-        /**
-         * AUDIO SYSTEM - 強化的音訊啟動邏輯
-         */
+        // --- 音訊系統 ---
         async function startMagic() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -195,7 +191,6 @@
                 await audioCtx.resume();
             }
             
-            // 隱藏加載層
             const loadingScreen = document.getElementById('loading');
             loadingScreen.style.opacity = '0';
             setTimeout(() => loadingScreen.remove(), 1000);
@@ -204,30 +199,24 @@
         }
 
         function playBGM() {
-            if (bgmInterval) return; // 防止重複播放
-
-            const notes = [64, 67, 71, 74, 76, 71]; // E4, G4, B4, D5, E5, B4
-            const playNote = (freq, t) => {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, t);
-                gain.gain.setValueAtTime(0, t);
-                gain.gain.linearRampToValueAtTime(0.06, t + 0.1);
-                gain.gain.exponentialRampToValueAtTime(0.001, t + 2);
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start(t);
-                osc.stop(t + 2);
-            };
-
+            if (bgmInterval) return;
+            const notes = [64, 67, 71, 74, 76, 71]; 
             const sequence = () => {
                 notes.forEach((n, i) => {
-                    const freq = 440 * Math.pow(2, (n - 69) / 12);
-                    playNote(freq, audioCtx.currentTime + i * 0.6);
+                    const t = audioCtx.currentTime + i * 0.6;
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440 * Math.pow(2, (n - 69) / 12), t);
+                    gain.gain.setValueAtTime(0, t);
+                    gain.gain.linearRampToValueAtTime(0.05, t + 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.001, t + 2);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(t);
+                    osc.stop(t + 2);
                 });
             };
-
             sequence();
             bgmInterval = setInterval(sequence, 4000);
         }
@@ -236,38 +225,32 @@
             if(!audioCtx || audioCtx.state !== 'running') return;
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
-            
             if(type === 'ting') {
-                osc.type = 'sine';
                 osc.frequency.setValueAtTime(1500, audioCtx.currentTime);
                 osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.4);
-                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
             } else {
                 osc.type = 'triangle';
                 osc.frequency.setValueAtTime(200, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.6);
-                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+                osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.5);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
             }
-            
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
             osc.connect(gain);
             gain.connect(audioCtx.destination);
             osc.start();
             osc.stop(audioCtx.currentTime + 0.6);
         }
 
-        /**
-         * THREE.JS CORE
-         */
+        // --- 3D 視覺引擎 ---
         function initThree() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 2, 18);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true }); // 手機關閉 antialias 換效能
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
             document.body.appendChild(renderer.domElement);
 
             const geometry = new THREE.BufferGeometry();
@@ -275,9 +258,9 @@
             const colors = new Float32Array(particleCount * 3);
             
             for (let i = 0; i < particleCount; i++) {
-                positions[i * 3] = (Math.random() - 0.5) * 50;
-                positions[i * 3 + 1] = (Math.random() - 0.5) * 50;
-                positions[i * 3 + 2] = (Math.random() - 0.5) * 50;
+                positions[i * 3] = (Math.random() - 0.5) * 40;
+                positions[i * 3 + 1] = (Math.random() - 0.5) * 40;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 40;
                 const color = new THREE.Color(COLORS[i % COLORS.length]);
                 colors[i * 3] = color.r;
                 colors[i * 3 + 1] = color.g;
@@ -288,7 +271,7 @@
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
             const material = new THREE.PointsMaterial({
-                size: 0.12, vertexColors: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false
+                size: 0.15, vertexColors: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false
             });
 
             particles = new THREE.Points(geometry, material);
@@ -297,28 +280,24 @@
             particles.userData.treeTargets = generateTreeShape();
             particles.userData.scatterTargets = generateScatterShape();
 
-            // Background Snow
-            const snowGeo = new THREE.BufferGeometry();
-            const snowPos = new Float32Array(800 * 3);
-            for(let i=0; i<800; i++) {
-                snowPos[i*3] = (Math.random()-0.5)*60;
-                snowPos[i*3+1] = Math.random()*40;
-                snowPos[i*3+2] = (Math.random()-0.5)*60;
-            }
-            snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
-            const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({ size: 0.05, color: 0xffffff, transparent: true, opacity: 0.4 }));
-            scene.add(snow);
-            particles.userData.snow = snow;
-
             window.addEventListener('resize', () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
             });
-            
-            // Fallback interactions
-            window.addEventListener('mousedown', () => { if(audioCtx) audioCtx.resume(); toggleState(true); });
-            window.addEventListener('mouseup', () => toggleState(false));
+
+            // 手機端模擬：長按
+            const triggerFist = (e) => { 
+                if(e.cancelable) e.preventDefault(); 
+                if(audioCtx) audioCtx.resume(); 
+                toggleState(true); 
+            };
+            const releaseFist = () => toggleState(false);
+
+            window.addEventListener('touchstart', triggerFist, { passive: false });
+            window.addEventListener('touchend', releaseFist);
+            window.addEventListener('mousedown', triggerFist);
+            window.addEventListener('mouseup', releaseFist);
         }
 
         function generateTreeShape() {
@@ -328,16 +307,12 @@
                 const py = Math.random() * height - 4;
                 const r = ((height - (py + 4)) / height) * 5;
                 const angle = Math.random() * Math.PI * 2;
-                const currentR = r * (0.85 + Math.random() * 0.15);
+                const currentR = r * (0.8 + Math.random() * 0.2);
                 targets[i * 3] = Math.cos(angle) * currentR;
                 targets[i * 3 + 1] = py;
                 targets[i * 3 + 2] = Math.sin(angle) * currentR;
-                if (i < 300) {
-                    const sAngle = Math.random() * Math.PI * 2;
-                    const sR = Math.random() * 0.8;
-                    targets[i * 3] = Math.cos(sAngle) * sR;
+                if (i < 200) { // 星星
                     targets[i * 3 + 1] = 8.5 + (Math.random() * 0.5);
-                    targets[i * 3 + 2] = Math.sin(sAngle) * sR;
                 }
             }
             return targets;
@@ -346,7 +321,7 @@
         function generateScatterShape() {
             const targets = new Float32Array(particleCount * 3);
             for (let i = 0; i < particleCount; i++) {
-                const radius = 15 + Math.random() * 20;
+                const radius = 15 + Math.random() * 15;
                 const theta = Math.random() * Math.PI * 2;
                 const phi = Math.acos(2 * Math.random() - 1);
                 targets[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
@@ -370,9 +345,7 @@
             }
         }
 
-        /**
-         * MEDIAPIPE HANDS
-         */
+        // --- AI 手勢識別 ---
         function initHands() {
             const videoElement = document.getElementById('input-video');
             const hands = new Hands({
@@ -380,7 +353,7 @@
             });
 
             hands.setOptions({
-                maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6
+                maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
             });
 
             hands.onResults((results) => {
@@ -391,9 +364,9 @@
                         if (lm[tip].y > lm[mid].y) closedFingers++;
                     });
                     toggleState(closedFingers >= 3);
-                    document.getElementById('status-indicator').innerText = isFist ? "✨ 魔法凝聚中 ✨" : "✨ 觸碰星空 ✨";
+                    document.getElementById('status-indicator').innerText = isFist ? "✨ 魔法凝聚 ✨" : "✨ 聖誕星塵 ✨";
                 } else {
-                    document.getElementById('status-indicator').innerText = "等待您的手勢...";
+                    document.getElementById('status-indicator').innerText = "請將手放在鏡頭前";
                 }
             });
 
@@ -405,27 +378,23 @@
             });
             
             cameraPipe.start().then(() => {
-                // 加載完成，顯示按鈕
                 document.getElementById('spinner').style.display = 'none';
-                document.getElementById('loading-text').innerText = "魔法準備就緒！";
+                document.getElementById('loading-text').innerText = "準備好了！";
                 const startBtn = document.getElementById('start-button');
                 startBtn.style.display = 'block';
                 startBtn.onclick = startMagic;
-            }).catch(() => {
+            }).catch((err) => {
+                console.error(err);
                 document.getElementById('spinner').style.display = 'none';
-                document.getElementById('loading-text').innerText = "摄像头无法启动，请使用鼠标预览";
+                document.getElementById('loading-text').innerText = "相機啟動失敗，改用點擊模式";
                 const startBtn = document.getElementById('start-button');
                 startBtn.style.display = 'block';
                 startBtn.onclick = startMagic;
             });
         }
 
-        /**
-         * ANIMATION LOOP
-         */
         function animate() {
             requestAnimationFrame(animate);
-
             const posAttr = particles.geometry.attributes.position;
             const positions = posAttr.array;
             const targetSet = isFist ? particles.userData.treeTargets : particles.userData.scatterTargets;
@@ -435,22 +404,9 @@
                 positions[ix] += (targetSet[ix] - positions[ix]) * lerpSpeed;
                 positions[iy] += (targetSet[iy] - positions[iy]) * lerpSpeed;
                 positions[iz] += (targetSet[iz] - positions[iz]) * lerpSpeed;
-                if (!isFist) {
-                    const time = Date.now() * 0.001;
-                    positions[ix] += Math.sin(time + i) * 0.02;
-                    positions[iy] += Math.cos(time + i * 0.5) * 0.02;
-                }
             }
             posAttr.needsUpdate = true;
-            particles.rotation.y += isFist ? 0.008 : 0.002;
-
-            const snowPos = particles.userData.snow.geometry.attributes.position.array;
-            for(let i=0; i<800; i++) {
-                snowPos[i*3+1] -= 0.05;
-                if(snowPos[i*3+1] < -10) snowPos[i*3+1] = 30;
-            }
-            particles.userData.snow.geometry.attributes.position.needsUpdate = true;
-
+            particles.rotation.y += isFist ? 0.008 : 0.003;
             renderer.render(scene, camera);
         }
 
