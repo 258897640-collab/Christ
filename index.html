@@ -10,9 +10,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- MediaPipe Hands (Pinned Version for Stability) -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js"></script>
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
     <style>
         body {
@@ -21,6 +21,7 @@
             background: radial-gradient(circle at center, #001f3f 0%, #000428 100%);
             color: white;
             font-family: 'Great Vibes', cursive;
+            /* 關鍵：雖然全局禁止，但允許預設操作以防卡死 */
             touch-action: none; 
             -webkit-user-select: none;
             user-select: none;
@@ -84,9 +85,10 @@
             text-align: center;
             border: 1px solid rgba(255, 215, 0, 0.2);
             backdrop-filter: blur(4px);
-            margin-bottom: 40px; 
+            margin-bottom: 40px; /* 避開可能的底部手勢條 */
         }
 
+        /* 載入層 - 最高層級 */
         .loading-screen {
             position: fixed;
             inset: 0;
@@ -95,10 +97,11 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 9999;
+            z-index: 9999; /* 確保在最上層 */
             transition: opacity 0.5s ease;
         }
 
+        /* 按鈕樣式優化 */
         #start-button {
             position: relative;
             padding: 15px 50px;
@@ -111,6 +114,7 @@
             box-shadow: 0 0 30px rgba(255, 215, 0, 0.4);
             font-weight: bold;
             margin-top: 30px;
+            /* 關鍵修復：強制允許觸控 */
             pointer-events: auto !important;
             touch-action: manipulation !important;
             cursor: pointer;
@@ -138,9 +142,11 @@
 </head>
 <body>
 
+    <!-- 載入層 -->
     <div id="loading" class="loading-screen">
         <div style="font-family: sans-serif; font-size: 1.2rem; color: #ffd700; margin-bottom: 10px;">Magical Tree</div>
         <div style="font-family: sans-serif; font-size: 0.9rem; color: #aaa;">建議佩戴耳機</div>
+        <!-- 移除 onclick，改用 JS 綁定以確保相容性 -->
         <button id="start-button">開啟聖誕魔法</button>
     </div>
 
@@ -159,19 +165,9 @@
     </div>
 
     <script>
-        // --- 錯誤處理：防止 Fetch 錯誤導致崩潰 ---
-        window.addEventListener('unhandledrejection', function(event) {
-            console.warn("捕捉到未處理的 Promise 錯誤:", event.reason);
-            // 忽略 Failed to fetch 錯誤，讓程式繼續運行
-            if (event.reason && event.reason.message && event.reason.message.includes('fetch')) {
-                const log = document.getElementById('status-log');
-                if (log) log.innerText = "網路資源受限，請使用觸控模式";
-                event.preventDefault(); 
-            }
-        });
-
         // --- 全局變數 ---
         let scene, camera, renderer, particles;
+        // 手機端進一步優化粒子數，確保不卡頓
         const particleCount = window.innerWidth < 768 ? 3000 : 7000; 
         let isFist = false;
         let lerpSpeed = 0.08;
@@ -181,37 +177,40 @@
 
         const COLORS = [0xFFD700, 0x50C878, 0xFFF8E1, 0xFFD700, 0x00FF7F];
 
-        // --- 1. 核心啟動邏輯 ---
+        // --- 1. 核心啟動邏輯 (修復重點) ---
         
         const startBtn = document.getElementById('start-button');
         
+        // 同時綁定 touchstart 和 click，防止某一個失效
         startBtn.addEventListener('touchstart', handleStart, { passive: false });
         startBtn.addEventListener('click', handleStart);
 
         function handleStart(e) {
+            // 防止觸發兩次
             if (isExperienceStarted) return;
+            // 阻止默認行為（如縮放或滾動），確保點擊有效
             if (e.type === 'touchstart') e.preventDefault();
             
             isExperienceStarted = true;
             startBtn.innerText = "啟動中...";
             
-            // A. 音訊
+            // A. 立即創建音訊環境 (必須在用戶操作的堆疊中同步執行)
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 audioCtx.resume();
-                playBGM();
+                playBGM(); // 啟動背景音樂
             } catch (err) {
                 console.log("Audio Error:", err);
             }
 
-            // B. 介面
+            // B. 強制隱藏 UI (不等待動畫)
             const ls = document.getElementById('loading');
             ls.style.display = 'none';
 
-            // C. 3D
+            // C. 確保 Three.js 已啟動
             if (!renderer) initThree();
             
-            // D. 相機
+            // D. 在背景嘗試啟動相機 (不阻擋畫面)
             setTimeout(initCameraSystem, 100);
             
             updateLog("長按螢幕來互動！");
@@ -230,10 +229,7 @@
                     throw new Error("No camera API");
                 }
 
-                // 使用特定版本路徑，避免 Failed to fetch
-                const HANDS_VERSION = '0.4.1646424915';
-                hands = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${HANDS_VERSION}/${f}` });
-                
+                hands = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
                 hands.setOptions({ 
                     maxNumHands: 1, 
                     modelComplexity: 0, 
@@ -255,8 +251,8 @@
                 updateLog("AI 已就緒：握拳凝聚");
 
             } catch (err) {
-                console.warn("Camera/AI init failed (Touch Only mode):", err);
-                updateLog("相機連接失敗，請使用觸控模式");
+                console.log("Camera init failed, using touch only");
+                // 失敗也不報錯，靜默切換為純觸控模式
             }
         }
 
@@ -264,6 +260,7 @@
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const lm = results.multiHandLandmarks[0];
                 let closed = 0;
+                // 寬鬆的握拳判定
                 if (lm[8].y > lm[6].y) closed++;  
                 if (lm[12].y > lm[10].y) closed++; 
                 if (lm[16].y > lm[14].y) closed++; 
@@ -276,6 +273,7 @@
         function playBGM() {
             if (bgmInterval) return;
             const sequence = () => {
+                // 簡單的聖誕旋律
                 const notes = [64, 67, 71, 74, 76, 71]; 
                 notes.forEach((n, i) => {
                     if (!audioCtx) return;
@@ -364,6 +362,7 @@
             
             // 互動事件綁定
             const handleInteract = (e) => { 
+                // 防止長按時選中文字或彈出選單
                 if(e.cancelable) e.preventDefault(); 
                 toggleState(true); 
             };
@@ -372,6 +371,7 @@
                 toggleState(false); 
             };
 
+            // 注意： passive: false 是 iOS Safari 阻止默認行為的關鍵
             window.addEventListener('touchstart', handleInteract, { passive: false });
             window.addEventListener('touchend', handleRelease, { passive: false });
             window.addEventListener('mousedown', handleInteract);
@@ -441,6 +441,7 @@
             renderer.render(scene, camera);
         }
         
+        // 頁面載入後立即初始化 3D 場景
         window.onload = () => { initThree(); };
 
     </script>
